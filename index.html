@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>逆地理-村/路/POI 全字段</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;padding:40px;font-family:Arial,Helvetica,sans-serif;background:#f2f2f2}
+#box{max-width:600px;margin:auto;background:#fff;padding:30px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+h2{margin-top:0}
+.ok{color:#080}
+.err{color:#c00}
+pre{background:#f7f7f7;padding:12px;border-radius:4px;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+<div id="box">
+  <h2>逆地理-村/路/POI 全字段</h2>
+  <button id="agree" class="btn btn-primary">同意并继续</button>
+  <button id="deny"  class="btn btn-danger">拒绝</button>
+  <pre id="result"></pre>
+</div>
+
+<script>
+const GD_KEY = 'bda831a9a224d37e982ff680fbbeeb43';
+const GD_URL = loc => `https://restapi.amap.com/v3/geocode/regeo?location=${loc.lng},${loc.lat}&key=${GD_KEY}&radius=1000&extensions=all`;
+
+document.getElementById('agree').onclick = async () => {
+  document.getElementById('result').textContent = '正在解析村/路/POI…';
+  const pos = await askLocation();
+  if (!pos) return;
+  const addr = await reverseGeo(pos);
+  const isp  = await getISP();
+  document.getElementById('result').textContent =
+    `✅ 您已授权\n` +
+    `1. 经纬度：${pos.lat}, ${pos.lng}\n` +
+    `2. 省市区：${addr.province} ${addr.city} ${addr.district}\n` +
+    `3. 乡镇：${addr.township}\n` +
+    `4. 村：${addr.village}\n` +
+    `5. 道路：${addr.road} ${addr.roaddistance} 米\n` +
+    `6. 门牌：${addr.streetNumber}\n` +
+    `7. 最近 POI：${addr.poi}（距离 ${addr.poidistance} 米）\n` +
+    `8. 运营商：${isp}`;
+};
+
+document.getElementById('deny').onclick = async () => {
+  const isp = await getISP();
+  document.getElementById('result').textContent = `❌ 您已拒绝精确定位\n运营商：${isp}`;
+};
+
+async function askLocation(){
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({lat:p.coords.latitude, lng:p.coords.longitude}),
+      e => resolve(null),
+      {enableHighAccuracy:true, timeout:10000, maximumAge:0}
+    );
+  });
+}
+
+async function reverseGeo({lat,lng}){
+  const res = await fetch(GD_URL({lat,lng}));
+  const json = await res.json();
+  if(json.status!=='1') throw new Error(json.info);
+  const r = json.regeocode;
+  const a = r.addressComponent;
+  const p = r.roads?.[0] || {};          // 最近道路
+  const poi = r.pois?.[0] || {};         // 最近 POI
+  return {
+    province : a.province || '',
+    city     : a.city || '',
+    district : a.district || '',
+    township : a.township || '',
+    village  : a.village || '',
+    road          : p.name || '',
+    roaddistance  : p.distance || '',
+    streetNumber  : a.streetNumber?.number || '',
+    poi        : poi.name || '',
+    poidistance: poi.distance || ''
+  };
+}
+
+async function getISP(){
+  try{ const res = await fetch('https://ipinfo.io/json'); return (await res.json()).org || '未知'; } catch{ return '未知'; }
+}
+</script>
+</body>
+</html>

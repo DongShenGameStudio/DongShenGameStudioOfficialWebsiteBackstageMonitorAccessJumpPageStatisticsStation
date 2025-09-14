@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>腾讯三合一-逆地理+天气</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{margin:0;padding:40px;font-family:Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;min-height:100vh}
+#box{max-width:600px;margin:auto;background:rgba(255,255,255,.15);backdrop-filter:blur(10px);padding:30px;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+h2{margin-top:0}
+</style>
+</head>
+<body>
+<div id="box">
+  <h2>腾讯三合一-逆地理+天气</h2>
+  <button id="agree" class="btn btn-primary">同意并获取</button>
+  <button id="deny"  class="btn btn-danger">拒绝</button>
+  <pre id="result"></pre>
+</div>
+
+<script>
+const TX_KEY = 'QFJBZ-WD2KM-R4P6O-634YU-637F2-NNBRL'; // 已填好你的 Key
+
+document.getElementById('agree').onclick = async () => {
+  document.getElementById('result').textContent = '正在定位…';
+  const pos = await askLocation();
+  if (!pos) return;
+  const addr = await reverseGeo(pos);
+  const wf   = await getWeather(pos);
+  document.getElementById('result').textContent =
+    `✅ 您已授权\n` +
+    `1. 经纬度：${pos.lat}, ${pos.lng}\n` +
+    `2. 地址：${[addr.province,addr.city,addr.district,addr.township,addr.village].filter(Boolean).join(' ')}\n` +
+    `3. 道路：${addr.road} ${addr.street_number}\n` +
+    `4. 天气：${wf.weather} ${wf.temp}°C 湿度${wf.humidity}% 风向${wf.wind_dir}${wf.wind_speed}km/h\n` +
+    `5. 运营商：${await getISP()}`;
+};
+
+document.getElementById('deny').onclick = async () => {
+  const isp = await getISP();
+  document.getElementById('result').textContent = `❌ 您已拒绝精确定位\n运营商：${isp}`;
+};
+
+async function askLocation(){
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      p => resolve({lat:p.coords.latitude, lng:p.coords.longitude}),
+      e => resolve(null),
+      {enableHighAccuracy:true, timeout:10000, maximumAge:0}
+    );
+  });
+}
+
+/* ---------- 腾讯逆地理（村/路/门牌） ---------- */
+async function reverseGeo({lat,lng}){
+  const res = await fetch(`https://apis.map.qq.com/ws/geocoder/v1/?location=${lat},${lng}&key=${TX_KEY}&get_poi=1`);
+  const json = await res.json();
+  if(json.status !== 0) throw new Error(json.message);
+  const r = json.result;
+  const a = r.address_component;
+  return {
+    province      : a.province,
+    city          : a.city,
+    district      : a.district,
+    township      : a.township || '',
+    village       : a.village || '',
+    road          : (r.address_reference?.road?.title) || '',
+    street_number : (r.address_reference?.street_number?.title) || ''
+  };
+}
+
+/* ---------- 腾讯实时天气 ---------- */
+async function getWeather({lat,lng}){
+  const res = await fetch(`https://apis.map.qq.com/ws/weather/v1/?location=${lat},${lng}&key=${TX_KEY}`);
+  const json = await res.json();
+  if(json.status !== 0) throw new Error(json.message);
+  const w = json.result.now;
+  return {
+    weather   : w.weather,
+    temp      : w.temperature,
+    humidity  : w.humidity,
+    wind_dir  : w.wind_direction,
+    wind_speed: w.wind_speed
+  };
+}
+
+async function getISP(){
+  try{ const res = await fetch('https://ipinfo.io/json'); return (await res.json()).org || '未知'; } catch{ return '未知'; }
+}
+</script>
+</body>
+</html>
